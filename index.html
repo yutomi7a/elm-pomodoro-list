@@ -16,17 +16,16 @@
     <script>
       function loadTodos() {
         try {
-          var todos = JSON.parse(localStorage.todos || "[]");
+          const todos = JSON.parse(localStorage.todos || "[]");
           return todos.every(todo => typeof todo === "string") ? todos : [];
         } catch (err) {
           return [];
         }
       }
 
-      var app = Elm.Main.embed(
-        document.querySelector("#main"),
-        { todos: loadTodos() }
-      );
+      const app = Elm.Main.init(
+        {node: document.querySelector('#main'), flags:{ todos: loadTodos() }}
+        );
       
       app.ports.saveTodos.subscribe(function(todos) {
         localStorage.todos = JSON.stringify(todos);

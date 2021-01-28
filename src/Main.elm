@@ -1,16 +1,18 @@
 port module Main exposing (..)
 
-import Html exposing (Html, Attribute, programWithFlags, div, text, h2, button, i, input, form, span)
-import Html.Attributes exposing (class, value, style, id)
+import Html exposing (Html, Attribute, div, text, h2, button, i, input, form, span)
+import Html.Attributes exposing (class, value, style, id, placeholder)
 import Html.Events exposing (onClick, onSubmit, onInput, onDoubleClick, onBlur)
-import Time exposing (Time, second)
-import Dom
+import Time
+import Browser.Dom as Dom
+import Browser
 import Task
 
 
 type Mode
     = Working
     | Resting
+    | LongResting
 
 
 type alias Model =
@@ -20,6 +22,7 @@ type alias Model =
     , inputBox : String
     , todos : List String
     , editIndex : Int
+    , freq : Int
     }
 
 
@@ -28,7 +31,7 @@ type alias Flag =
 
 
 type Msg
-    = Tick Time
+    = Tick Time.Posix
     | PlayPause
     | ToggleMode
     | ResetTime
@@ -41,14 +44,14 @@ type Msg
 
 init : Flag -> ( Model, Cmd Msg )
 init flag =
-    ( Model (modeToSeconds Working) False Working "" flag.todos -1
+    ( Model (modeToSeconds Working) False Working "" flag.todos  -1 1
     , Cmd.none
     )
 
 
 view : Model -> Html Msg
 view model =
-    div []
+    div [ style "background-color" (modeToColor model.mode) ]
         [ pomodoroTimer model
         , viewTodos model
         ]
@@ -63,6 +66,7 @@ viewTodos model =
                 [ class "form-control"
                 , onInput InputBox
                 , value model.inputBox
+                , placeholder "Input your todo"
                 ]
                 []
             ]
@@ -92,7 +96,7 @@ viewTodo editIndex index todo =
                 [ text todo ]
             , div
                 [ class "pull-right"
-                , style [ ( "cursor", "pointer" ) ]
+                , style "cursor" "pointer"
                 ]
                 [ span
                     [ onClick (RemoveTodo index) ]
@@ -156,21 +160,25 @@ clockTime : Int -> String
 clockTime totalSeconds =
     let
         seconds =
-            String.padLeft 2 '0' (toString <| rem totalSeconds 60)
+            String.fromInt ((remainderBy 60) totalSeconds)
 
         minutes =
-            toString <| rem (totalSeconds // 60) 60
+            String.fromInt (totalSeconds // 60)
     in
         minutes ++ ":" ++ seconds
 
 
-toggleMode : Mode -> Mode
-toggleMode mode =
+toggleMode : Mode -> Int -> Mode
+toggleMode mode freq =
     case mode of
         Working ->
-            Resting
+            if ((remainderBy 4) freq) == 0 then LongResting
+            else Resting
 
         Resting ->
+            Working
+
+        LongResting ->
             Working
 
 
@@ -182,7 +190,21 @@ modeToSeconds mode =
 
         Resting ->
             5 * 60
+        
+        LongResting ->
+            15 * 60
 
+modeToColor : Mode -> String
+modeToColor mode =
+    case mode of
+        Working ->
+            "#ed7179"
+
+        Resting ->
+            "#00ff00"
+
+        LongResting ->
+            "#00ffff"
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -190,8 +212,9 @@ update msg model =
         Tick time ->
             if model.secondsLeft - 1 < 0 then
                 ( { model
-                    | secondsLeft = toggleMode model.mode |> modeToSeconds
-                    , mode = toggleMode model.mode
+                    | secondsLeft = toggleMode model.mode model.freq |> modeToSeconds
+                    , mode = toggleMode model.mode model.freq
+                    , freq = model.freq + 1
                   }
                 , makeSound ()
                 )
@@ -206,7 +229,7 @@ update msg model =
         ToggleMode ->
             let
                 mode =
-                    toggleMode model.mode
+                    toggleMode model.mode model.freq
             in
                 ( { model | mode = mode, secondsLeft = modeToSeconds mode }
                 , Cmd.none
@@ -273,14 +296,12 @@ port makeSound : () -> Cmd msg
 subscriptions : Model -> Sub Msg
 subscriptions model =
     if model.clockRunning then
-        Time.every second Tick
+        Time.every 1000 Tick
     else
         Sub.none
 
-
 main : Program Flag Model Msg
-main =
-    programWithFlags
+main = Browser.element
         { init = init
         , view = view
         , update = update
